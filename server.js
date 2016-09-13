@@ -35,8 +35,25 @@ var getRelatedArtists = function(id) {
     return emitter;
 };
 
+//api request for top tracks
+var getTopTracks = function(relatedId) {
+    var emitter = new events.EventEmitter();
+    unirest.get('http://api.spotify.com/v1/artists/' + relatedId + '/top-tracks?country=gb')
+           .end(function(response) {
+        if (response.ok) {
+            emitter.emit('end', response.body);
+        }
+        else {
+            emitter.emit('error', response.code);
+        }
+    });
+    return emitter;
+};
+
+//get route
 app.get('/search/:name', function(req, res) {
     
+    //calling getFromApi
     var searchReq = getFromApi('search', {
         q: req.params.name,
         limit: 1,
@@ -48,18 +65,38 @@ app.get('/search/:name', function(req, res) {
         var id = item.artists.items[0].id;
         console.log(id);
         
+        //calling getRelated
         var related = getRelatedArtists(id);
         
         related.on('end', function(items) {
             artist.related = items.artists;
             
-            res.json(artist);
-            
-            /*for(var i = 0; i <=20; i++) {
-                var names = items.artists[i].name;
-                console.log(names);
+            var count = 0;
+            //calling getTopTracks
+            artist.related.forEach(function(relatedArtists, i) {
+                var relatedId = relatedArtists.id;
                 
-            }*/
+                console.log(relatedId);
+                
+                var tracks = getTopTracks(relatedId);
+                
+                tracks.on('end', function(items) {
+                    relatedArtists.tracks = items.tracks;
+               
+                    count++;
+                    if(count === artist.related.length) {
+                        res.json(artist);
+                    }
+                });
+                
+                tracks.on('error',function(code) {
+                    res.sendStatus(code);
+                });
+            });
+        });
+        
+        related.on('error',function(code) {
+            res.sendStatus(code);
         });
     });
     
